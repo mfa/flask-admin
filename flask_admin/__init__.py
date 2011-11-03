@@ -177,7 +177,9 @@ def create_admin_blueprint(
             model_form = admin_blueprint.form_dict[model_name]
 
             pk = _get_pk_name(model)
-            pk_query_dict = {pk: model_key}
+            pk_query_dict = {}
+            for key, value in zip(_get_pk_name(model), model_key.split('|')):
+                pk_query_dict[key] = value
 
             try:
                 model_instance = db_session.query(model).filter_by(
@@ -268,8 +270,11 @@ def create_admin_blueprint(
                 return "%s cannot be accessed through this admin page" % (
                     model_name,)
             model = model_dict[model_name]
-            pk = _get_pk_name(model)
-            pk_query_dict = {pk: model_key}
+
+            pk_query_dict = {}
+            for key, value in zip(_get_pk_name(model), model_key.split('|')):
+                pk_query_dict[key] = value
+
             try:
                 model_instance = db_session.query(model).filter_by(
                     **pk_query_dict).one()
@@ -329,7 +334,11 @@ def _get_pk_value(model_instance):
     Return the primary key value for a given model_instance
     instance. Assumes single primary key.
     """
-    return getattr(model_instance, _get_pk_name(model_instance))
+    values = []
+    for value in _get_pk_name(model_instance):
+        values.append(getattr(model_instance, value))
+
+    return "|".join(values)
 
 
 def _get_pk_name(model):
@@ -339,12 +348,14 @@ def _get_pk_name(model):
     """
     model_mapper = model.__mapper__
 
+    keys = []
+
     for prop in model_mapper.iterate_properties:
         if isinstance(prop, sa.orm.properties.ColumnProperty) and \
                prop.columns[0].primary_key:
-            return prop.key
+            keys.append(prop.key)
 
-    return None
+    return keys
 
 
 def _form_for_model(model_class, db_session, exclude=None, exclude_pk=True):
@@ -359,10 +370,10 @@ def _form_for_model(model_class, db_session, exclude=None, exclude_pk=True):
     model_mapper = sa.orm.class_mapper(model_class)
     relationship_fields = []
 
-    pk_name = _get_pk_name(model_class)
+    pk_names = _get_pk_name(model_class)
 
     if exclude_pk:
-        exclude.append(pk_name)
+        exclude.extend(pk_names)
 
     # exclude any foreign_keys that we have relationships for;
     # relationships will be mapped to select fields by the
@@ -371,7 +382,7 @@ def _form_for_model(model_class, db_session, exclude=None, exclude_pk=True):
                     for relationship in model_mapper.iterate_properties
                     if isinstance(relationship,
                                   sa.orm.properties.RelationshipProperty)
-                    and relationship.local_side[0].name != pk_name])
+                    and relationship.local_side[0].name not in pk_names])
     form = model_form(model_class, exclude=exclude,
                       converter=AdminConverter(db_session))
 
@@ -477,14 +488,19 @@ class AdminConverter(ModelConverter):
                                 'column properties currently')
 
             column = prop.columns[0]
+            default_value = None
+
+            if hasattr(column, 'default'):
+                default_value = column.default
+
             kwargs = {
                 'validators': [],
                 'filters': [],
-                'default': column.default,
+                'default': default_value,
             }
             if field_args:
                 kwargs.update(field_args)
-            if column.nullable:
+            if hasattr(column, 'nullable') and column.nullable:
                 kwargs['validators'].append(validators.Optional())
             if self.use_mro:
                 types = inspect.getmro(type(column.type))
