@@ -283,6 +283,12 @@ class AdminConverter(ModelConverter):
                              column=column, field_args=kwargs)
 
         if isinstance(prop, sa.orm.properties.RelationshipProperty):
+
+            if str(prop).endswith('_query'):
+                # only applyable if two relationships set 
+                # (one with dynamic and one with select)
+                return
+
             if prop.direction == sa.orm.interfaces.MANYTOONE and \
                    len(prop.local_remote_pairs) != 1:
                 raise TypeError('Do not know how to convert multiple'
