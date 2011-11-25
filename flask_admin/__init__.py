@@ -152,19 +152,7 @@ def create_admin_blueprint_new(
             model_instance = datastore.find_model_instance(model_name,
                                                            model_key)
 
-#<<<<<<< HEAD
-            pk = _get_pk_name(model)
-            pk_query_dict = {}
-            for key, value in zip(_get_pk_name(model), model_key.split('|')):
-                pk_query_dict[key] = value
-
-            try:
-                model_instance = db_session.query(model).filter_by(
-                    **pk_query_dict).one()
-            except NoResultFound:
-#=======
-#            if not model_instance:
-#>>>>>>> e6eb5831305562455ee98c0380a28de45e61c6a1
+            if not model_instance:
                 return "%s not found: %s" % (model_name, model_key)
 
             if request.method == 'GET':
@@ -245,22 +233,9 @@ def create_admin_blueprint_new(
             if not model_name in datastore.list_model_names():
                 return "%s cannot be accessed through this admin page" % (
                     model_name,)
-#<<<<<<< HEAD
-#            model = model_dict[model_name]
-
-#            pk_query_dict = {}
-#            for key, value in zip(_get_pk_name(model), model_key.split('|')):
-#                pk_query_dict[key] = value
-
-#            try:
-#                model_instance = db_session.query(model).filter_by(
-#                    **pk_query_dict).one()
-#            except NoResultFound:
-#=======
             model_instance = datastore.delete_model_instance(model_name,
                                                              model_key)
             if not model_instance:
-#>>>>>>> e6eb5831305562455ee98c0380a28de45e61c6a1
                 return "%s not found: %s" % (model_name, model_key)
 
             flash('%s deleted: %s' % (model_name, model_instance),
