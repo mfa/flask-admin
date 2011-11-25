@@ -20,7 +20,6 @@ import types
 
 import flask
 from flask import flash, render_template, redirect, request, url_for
-from flaskext.sqlalchemy import Pagination
 import sqlalchemy as sa
 from sqlalchemy.orm.exc import NoResultFound
 from wtforms import widgets, validators
@@ -28,27 +27,20 @@ from wtforms import fields as wtf_fields
 from wtforms.ext.sqlalchemy.orm import model_form, converts, ModelConverter
 from wtforms.ext.sqlalchemy import fields as sa_fields
 
+from flask.ext.admin.wtforms import has_file_field
+from flask.ext.admin.datastore import AdminDatastore, SQLAlchemyDatastore
 
-def create_admin_blueprint(
-    models, db_session, name='admin', model_forms=None, exclude_pks=True,
-    list_view_pagination=25, view_decorator=None, **kwargs):
-    """
-    Returns a blueprint that provides the admin interface views. The
-    blueprint that is returned will still need to be registered to
-    your flask app. Additional parameters will be passed to the
-    blueprint constructor.
+
+def create_admin_blueprint(*args, **kwargs):
+    """Returns a blueprint that provides the admin interface
+    views. The blueprint that is returned will still need to be
+    registered to your flask app. Additional parameters will be passed
+    to the blueprint constructor.
 
     The parameters are:
 
-    `models`
-        Either a module or an iterable that contains the SQLAlchemy
-        models that will be made available through the admin
-        interface.
-
-    `db_session`
-        A SQLAlchemy session that has been set up and bound to an
-        engine. See the documentation on using Flask with SQLAlchemy
-        for more information on how to set that up.
+    `datastore`
+        An instantiated admin datastore object.
 
     `name`
         Specify the name for your blueprint. The name of the blueprint
@@ -58,16 +50,6 @@ def create_admin_blueprint(
         same app, it is necessary to set this value to something
         different for each admin module so the admin blueprints will
         have distinct endpoints.
-
-    `model_forms`
-        A dict with model names as keys, mapped to WTForm Form objects
-        that should be used as forms for creating and editing
-        instances of these models.
-
-    `exclude_pks`
-        A Boolean value that specifies whether or not to automatically
-        exclude fields representing the primary key from Flask-Admin
-        rendered forms. The default is True.
 
     `list_view_pagination`
         The number of model instances that will be shown in the list
@@ -82,39 +64,41 @@ def create_admin_blueprint(
         authentication/view_decorator.py for an example of how this
         might be used.
     """
+    if not isinstance(args[0], AdminDatastore):
+        from warnings import warn
+        warn(DeprecationWarning(
+            'The interface for creating admin blueprints has changed '
+            'as of Flask-Admin 0.3. In order to support alternative '
+            'datasores, you now need to configure an admin datastore '
+            'object before calling create_admin_blueprint(). See the '
+            'Flask-Admin documentation for more information.'),
+             stacklevel=2)
+        return create_admin_blueprint_deprecated(*args, **kwargs)
+
+    else:
+        return create_admin_blueprint_new(*args, **kwargs)
+
+
+def create_admin_blueprint_deprecated(
+    models, db_session, name='admin', model_forms=None, exclude_pks=True,
+    list_view_pagination=25, view_decorator=None, **kwargs):
+
+    datastore = SQLAlchemyDatastore(models, db_session, model_forms,
+                                    exclude_pks)
+
+    return create_admin_blueprint_new(datastore, name, list_view_pagination,
+                                      view_decorator)
+
+
+def create_admin_blueprint_new(
+    datastore, name='admin', list_view_pagination=25, view_decorator=None,
+    **kwargs):
 
     admin_blueprint = flask.Blueprint(
         name, 'flask.ext.admin',
         static_folder=os.path.join(_get_admin_extension_dir(), 'static'),
         template_folder=os.path.join(_get_admin_extension_dir(), 'templates'),
         **kwargs)
-
-    model_dict = {}
-
-    if not model_forms:
-        model_forms = {}
-
-    #XXX: fix base handling so it will work with non-Declarative models
-    if type(models) == types.ModuleType:
-        model_dict = dict(
-            [(k, v) for k, v in models.__dict__.items()
-             if isinstance(v, sa.ext.declarative.DeclarativeMeta)
-             and k != 'Base'])
-    else:
-        model_dict = dict(
-            [(model.__name__, model)
-             for model in models
-             if isinstance(model, sa.ext.declarative.DeclarativeMeta)
-             and model.__name__ != 'Base'])
-
-    if model_dict:
-        admin_blueprint.form_dict = dict(
-            [(k, _form_for_model(v, db_session,
-                                 exclude_pk=exclude_pks))
-             for k, v in model_dict.items()])
-        for model, form in model_forms.items():
-            if model in admin_blueprint.form_dict:
-                admin_blueprint.form_dict[model] = form
 
     # if no view decorator was assigned, let view_decorator be a dummy
     # decorator that doesn't really do anything
@@ -128,37 +112,30 @@ def create_admin_blueprint(
     def create_index_view():
         @view_decorator
         def index():
-            """
-            Landing page view for admin module
+            """Landing page view for admin module
             """
             return render_template(
                 'admin/index.html',
-                admin_models=sorted(model_dict.keys()))
+                model_names=datastore.list_model_names())
         return index
 
     def create_list_view():
         @view_decorator
         def list_view(model_name):
+            """Lists instances of a given model, so they can
+            beselected for editing or deletion.
             """
-            Lists instances of a given model, so they can be selected for
-            editing or deletion.
-            """
-            if not model_name in model_dict.keys():
+            if not model_name in datastore.list_model_names():
                 return "%s cannot be accessed through this admin page" % (
                     model_name,)
-            model = model_dict[model_name]
-            model_instances = db_session.query(model)
             per_page = list_view_pagination
             page = int(request.args.get('page', '1'))
-            offset = (page - 1) * per_page
-            items = model_instances.limit(per_page).offset(offset).all()
-            pagination = Pagination(model_instances, page, per_page,
-                                    model_instances.count(), items)
+            pagination = datastore.create_model_pagination(
+                model_name, page, per_page)
             return render_template(
                 'admin/list.html',
-                admin_models=sorted(model_dict.keys()),
-                _get_pk_value=_get_pk_value,
-                model_instances=pagination.items,
+                model_names=datastore.list_model_names(),
+                get_model_key=datastore.get_model_key,
                 model_name=model_name,
                 pagination=pagination)
         return list_view
@@ -166,16 +143,16 @@ def create_admin_blueprint(
     def create_edit_view():
         @view_decorator
         def edit(model_name, model_key):
-            """
-            Edit a particular instance of a model.
-            """
-            if not model_name in model_dict.keys():
+            """Edit a particular instance of a model."""
+            if not model_name in datastore.list_model_names():
                 return "%s cannot be accessed through this admin page" % (
                     model_name,)
 
-            model = model_dict[model_name]
-            model_form = admin_blueprint.form_dict[model_name]
+            model_form = datastore.get_model_form(model_name)
+            model_instance = datastore.find_model_instance(model_name,
+                                                           model_key)
 
+<<<<<<< HEAD
             pk = _get_pk_name(model)
             pk_query_dict = {}
             for key, value in zip(_get_pk_name(model), model_key.split('|')):
@@ -185,25 +162,27 @@ def create_admin_blueprint(
                 model_instance = db_session.query(model).filter_by(
                     **pk_query_dict).one()
             except NoResultFound:
+=======
+            if not model_instance:
+>>>>>>> e6eb5831305562455ee98c0380a28de45e61c6a1
                 return "%s not found: %s" % (model_name, model_key)
 
             if request.method == 'GET':
                 form = model_form(obj=model_instance)
-                has_file_field = filter(lambda field: isinstance(field, wtf_fields.FileField), form)
+                form._has_file_field = has_file_field(form)
                 return render_template(
                     'admin/edit.html',
-                    admin_models=sorted(model_dict.keys()),
+                    model_names=datastore.list_model_names(),
                     model_instance=model_instance,
-                    model_name=model_name, form=form, has_file_field=has_file_field)
+                    model_name=model_name, form=form)
 
             elif request.method == 'POST':
                 form = model_form(request.form, obj=model_instance)
-                has_file_field = filter(lambda field: isinstance(field, wtf_fields.FileField), form)
+                form._has_file_field = has_file_field(form)
                 if form.validate():
-                    model_instance = _populate_model_from_form(
+                    model_instance = datastore.update_from_form(
                         model_instance, form)
-                    db_session.add(model_instance)
-                    db_session.commit()
+                    datastore.save_model(model_instance)
                     flash('%s updated: %s' % (model_name, model_instance),
                           'success')
                     return redirect(
@@ -215,37 +194,36 @@ def create_admin_blueprint(
                           'error')
                     return render_template(
                         'admin/edit.html',
-                        admin_models=sorted(model_dict.keys()),
+                        model_names=datastore.list_model_names(),
                         model_instance=model_instance,
-                        model_name=model_name, form=form, has_file_field=has_file_field)
+                        model_name=model_name, form=form)
         return edit
 
     def create_add_view():
         @view_decorator
         def add(model_name):
-            """
-            Create a new instance of a model.
-            """
-            if not model_name in model_dict.keys():
+            """Create a new instance of a model."""
+            if not model_name in datastore.list_model_names():
                 return "%s cannot be accessed through this admin page" % (
                     model_name)
-            model = model_dict[model_name]
-            model_form = admin_blueprint.form_dict[model_name]
-            model_instance = model()
+            model_class = datastore.get_model_class(model_name)
+            model_form = datastore.get_model_form(model_name)
+            model_instance = model_class()
             if request.method == 'GET':
                 form = model_form()
+                form._has_file_field = has_file_field(form)
                 return render_template(
                     'admin/add.html',
-                    admin_models=sorted(model_dict.keys()),
+                    model_names=datastore.list_model_names(),
                     model_name=model_name,
                     form=form)
             elif request.method == 'POST':
                 form = model_form(request.form)
+                form._has_file_field = has_file_field(form)
                 if form.validate():
-                    model_instance = _populate_model_from_form(
+                    model_instance = datastore.update_from_form(
                         model_instance, form)
-                    db_session.add(model_instance)
-                    db_session.commit()
+                    datastore.save_model(model_instance)
                     flash('%s added: %s' % (model_name, model_instance),
                           'success')
                     return redirect(url_for('.list_view',
@@ -255,7 +233,7 @@ def create_admin_blueprint(
                           '%s has not been saved.' % model_name, 'error')
                     return render_template(
                         'admin/add.html',
-                        admin_models=sorted(model_dict.keys()),
+                        model_names=datastore.list_model_names(),
                         model_name=model_name,
                         form=form)
         return add
@@ -263,12 +241,11 @@ def create_admin_blueprint(
     def create_delete_view():
         @view_decorator
         def delete(model_name, model_key):
-            """
-            Delete an instance of a model.
-            """
-            if not model_name in model_dict.keys():
+            """Delete an instance of a model."""
+            if not model_name in datastore.list_model_names():
                 return "%s cannot be accessed through this admin page" % (
                     model_name,)
+<<<<<<< HEAD
             model = model_dict[model_name]
 
             pk_query_dict = {}
@@ -279,9 +256,13 @@ def create_admin_blueprint(
                 model_instance = db_session.query(model).filter_by(
                     **pk_query_dict).one()
             except NoResultFound:
+=======
+            model_instance = datastore.delete_model_instance(model_name,
+                                                             model_key)
+            if not model_instance:
+>>>>>>> e6eb5831305562455ee98c0380a28de45e61c6a1
                 return "%s not found: %s" % (model_name, model_key)
-            db_session.delete(model_instance)
-            db_session.commit()
+
             flash('%s deleted: %s' % (model_name, model_instance),
                   'success')
             return redirect(url_for(
@@ -310,12 +291,12 @@ def create_admin_blueprint(
 
 
 def _get_admin_extension_dir():
-    """
-    Returns the directory path of this admin extension. This is
+    """Returns the directory path of this admin extension. This is
     necessary for setting the static_folder and templates_folder
     arguments when creating the blueprint.
     """
     return os.path.dirname(inspect.getfile(inspect.currentframe()))
+<<<<<<< HEAD
 
 
 def _populate_model_from_form(model_instance, form):
@@ -571,3 +552,5 @@ class AdminConverter(ModelConverter):
     def conv_Time(self, field_args, **extra):
         field_args['widget'] = TimePickerWidget()
         return TimeField(**field_args)
+=======
+>>>>>>> e6eb5831305562455ee98c0380a28de45e61c6a1
