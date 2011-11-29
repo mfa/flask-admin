@@ -31,13 +31,13 @@ setup(
     platforms='any',
     install_requires=[
         'Flask>=0.7',
-        'Flask-WTF',
-        'Flask-SQLAlchemy',
+        'wtforms>=0.6.3',
     ],
     test_suite='test_admin.suite',
     tests_require=[
         'Flask-SQLAlchemy>=0.12',
-        'Flask-Testing',
+        'Flask-Testing>=0.3',
+        'MongoAlchemy>=0.10',
     ],
     classifiers=[
         'Development Status :: 4 - Beta',

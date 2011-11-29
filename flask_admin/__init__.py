@@ -20,49 +20,50 @@ import types
 
 import flask
 from flask import flash, render_template, redirect, request, url_for
-import sqlalchemy as sa
-from sqlalchemy.orm.exc import NoResultFound
-from wtforms import widgets, validators
-from wtforms import fields as wtf_fields
-from wtforms.ext.sqlalchemy.orm import model_form, converts, ModelConverter
-from wtforms.ext.sqlalchemy import fields as sa_fields
 
 from flask.ext.admin.wtforms import has_file_field
-from flask.ext.admin.datastore import AdminDatastore, SQLAlchemyDatastore
+from flask.ext.admin.datastore import AdminDatastore
 
 
 def create_admin_blueprint(*args, **kwargs):
-    """Returns a blueprint that provides the admin interface
-    views. The blueprint that is returned will still need to be
-    registered to your flask app. Additional parameters will be passed
-    to the blueprint constructor.
+    """Returns a Flask blueprint that provides the admin interface
+    views. This blueprint will need to be registered to your flask
+    application. The `datastore` parameter should be an set to be an
+    instantiated :class:`AdminDatastore`.
 
-    The parameters are:
+    For example, typical usage would look something like this::
 
-    `datastore`
-        An instantiated admin datastore object.
+        from flask import Flask
+        from flask.ext.admin.datastore.sqlalchemy import SQLAlchemyDatastore
 
-    `name`
-        Specify the name for your blueprint. The name of the blueprint
-        preceeds the view names of the endpoints, if for example you
-        want to refer to the views using :func:`flask.url_for()`. If
-        you are using more than one admin blueprint from within the
-        same app, it is necessary to set this value to something
-        different for each admin module so the admin blueprints will
-        have distinct endpoints.
+        from my_application import models, db_session
 
-    `list_view_pagination`
-        The number of model instances that will be shown in the list
-        view if there are more than this number of model
-        instances.
+        app = Flask(__name__)
+        datastore = SQLAlchemyDatastore(models, db_session)
+        admin = create_admin_blueprint(datastore)
+        app.register_blueprint(admin, url_prefix='/admin')
 
-    `view_decorator`
-        A decorator function that will be applied to each admin view
-        function.  In particular, you might want to set this to a
-        decorator that handles authentication
-        (e.g. login_required). See the
-        authentication/view_decorator.py for an example of how this
-        might be used.
+
+    You can optionally specify the `name` to be used for your
+    blueprint. The blueprint name preceeds the view names in the
+    endpoints, if for example you want to refer to the views using
+    :func:`flask.url_for()`.
+
+    .. note::
+
+       If you are using more than one admin blueprint from within the
+       same app, it is necessary to give each admin blueprint a
+       different name so the admin blueprints will have distinct
+       endpoints.
+
+    The `view_decorator` parameter can be set to a decorator that will
+    be applied to each admin view function.  For example, you might
+    want to set this to a decorator that handles authentication
+    (e.g. login_required). See the authentication/view_decorator.py
+    for an example of this.
+
+    The `list_view_pagination` parameter sets the number of items that
+    will be listed per page in the list view.
     """
     if not isinstance(args[0], AdminDatastore):
         from warnings import warn
@@ -83,6 +84,7 @@ def create_admin_blueprint_deprecated(
     models, db_session, name='admin', model_forms=None, exclude_pks=True,
     list_view_pagination=25, view_decorator=None, **kwargs):
 
+    from flask.ext.admin.datastore.sqlalchemy import SQLAlchemyDatastore
     datastore = SQLAlchemyDatastore(models, db_session, model_forms,
                                     exclude_pks)
 
