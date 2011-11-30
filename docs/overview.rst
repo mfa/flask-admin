@@ -1,9 +1,9 @@
+Quick start
+-----------
 
-How it works
-------------
-
-First create some SQLAlchemy declarative models using `SQLAlchemy`_ or
-`Flask-SQLAlchemy`_. For example::
+Start off by creating some data models. In this example we'll use
+`SQLAlchemy`_ declarative models.  `Flask-SQLAlchemy`_ and
+`MongoAlchemy`_ models are also supported. So here are our models::
 
     from sqlalchemy import create_engine, Column, Integer, String
     from sqlalchemy.ext.declarative import declarative_base
@@ -30,43 +30,18 @@ First create some SQLAlchemy declarative models using `SQLAlchemy`_ or
             return self.name
 
 
-.. note::
-   The __repr__ method of your model class will be used to describe
-   specific instances of your models models in things like the list
-   view. If you don't set it, the default __repr__ method will look
-   something like `<__main__.Student object at 0x1bb1490>`, which
-   won't be very useful for distinguishing model instances.
-
-
 Then create a datastore object using those models and your sqlalchemy
 session::
 
-    from flask.ext import admin
+    from flask.ext.admin.datastore.sqlalchemy import SQLAlchemyDatastore
     from sqlalchemy.orm import scoped_session, sessionmaker
 
-    db_session = scoped_session(sessionmaker(
-        autocommit=False, autoflush=False,
-        bind=engine))
+    db_session = scoped_session(sessionmaker(bind=engine))
 
-    admin_datastore = admin.datastore.SQLAlchemyDatastore(
-        (Student, Teacher), db_session)
+    admin_datastore = SQLAlchemyDatastore((Student, Teacher), db_session)
 
 
-The first argument to :func:`SQLAlchemyDatastore()` can have two
-forms: it can either be some python iterable like a list or tuple, or
-it can be a python module that contains your models. The second
-argument is the SQLAlchemy session that will be used to access the
-database. By default, Flask-Admin will not expose the primary keys of
-your models. This is usually a good idea if you are using a primary
-key that doesn't have any meaning outside of the database, like an
-auto-incrementing integer, because changing a primary key changes the
-nature of foreign key relationships. If you want to expose the primary
-key, set ``exclude_pks=False`` when instantiating your
-:func:`SQLAlchemyDatastore()`.
-
-
-Then create a blueprint using this datastore object and register this
-blueprint on your Flask app::
+And create a blueprint using this datastore object::
 
     admin_blueprint = admin.create_admin_blueprint(admin_datastore)
     app = Flask(__name__)
@@ -77,10 +52,18 @@ built-in development server via :meth:`app.run()`, then it should be
 available at http://localhost:5000/admin .
 
 
-A note on __init__
-------------------
 
-Your model classes must be able to be initialized without any
+Some notes on model classes
+---------------------------
+
+The __repr__ method of your model class will be used to describe
+specific instances of your models models in things like the list
+view. If you don't set it, the default __repr__ method will look
+something like `<__main__.Student object at 0x1bb1490>`, which won't
+be very useful for distinguishing model instances.
+
+
+Also, your model classes must be able to be initialized without any
 arguments. For example, the following works because in
 :meth:`__init__`, name is a keyword argument and is therefore
 optional::
@@ -110,6 +93,7 @@ method of :class:`User` `requires` a name::
             return self.name
 
 
+
 Flask-Admin Endpoints
 ---------------------
 If you want to refer to views in Flask-Admin, the following endpoints
@@ -117,7 +101,6 @@ are available:
 
 :meth:`url_for('admin.index')`
     returns the url for the index view
-
 :meth:`url_for('admin.list_view', model_name='some_model')`
     returns the list view for a given model
 
@@ -141,7 +124,6 @@ are available:
   endpoint for the index becomes ``'my_named_admin.index'``. This is
   necessary if you are going to use more than one admin blueprint
   within the same app.
-
 
 Custom Templates and Static Files
 ---------------------------------
@@ -246,6 +228,7 @@ in the database.
    only way to specify the order of form fields.
 
 
+
 More examples
 -------------
 
@@ -254,14 +237,8 @@ that demonstrate all of the patterns above, plus some additional ideas
 on how you can configure the admin.
 
 
-Current Limitations
--------------------
-
-Flask-Admin does not support multiple-column primary keys.
-
-
-
-.. _Flask-SQLAlchemy: http://packages.python.org/Flask-SQLAlchemy/
-.. _SQLAlchemy: http://www.sqlalchemy.org/
 .. _example directory: https://github.com/wilsaj/flask-admin/tree/master/example
+.. _Flask-SQLAlchemy: http://packages.python.org/Flask-SQLAlchemy/
+.. _MongoAlchemy: http://www.mongoalchemy.org/
+.. _SQLAlchemy: http://www.sqlalchemy.org/
 .. _view decorator example: https://github.com/wilsaj/flask-admin/tree/master/example/authentication/view_decorator.py

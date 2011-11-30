@@ -22,7 +22,7 @@ from flask import flash, render_template, redirect, request, url_for
 from flaskext.sqlalchemy import Pagination
 import sqlalchemy as sa
 from sqlalchemy.orm.exc import NoResultFound
-from wtforms import widgets
+from wtforms import validators, widgets
 from wtforms.ext.sqlalchemy.orm import model_form, converts, ModelConverter
 from wtforms.ext.sqlalchemy import fields as sa_fields
 
@@ -31,28 +31,38 @@ from flask.ext.admin.datastore import AdminDatastore
 
 
 class SQLAlchemyDatastore(AdminDatastore):
-    """
-    The parameters are:
+    """A datastore class for accessing SQLAlchemy models.
 
-    `models`
-        Either a module or an iterable that contains the SQLAlchemy
-        models that will be made available through the admin
-        interface.
+    The `models` parameter should be either a module or an iterable
+    (like a tuple or a list) that contains the SQLAlchemy models that
+    will be made available through the admin interface.
 
-    `db_session`
-        A SQLAlchemy session that has been set up and bound to an
-        engine. See the documentation on using Flask with SQLAlchemy
-        for more information on how to set that up.
+    `db_session` should be the SQLAlchemy session that the datastore
+    will use to access the database. The session should already be
+    bound to an engine. See the `SQLAlchemy in Flask`_ documentation
+    for more information on how to configure the session.
 
-    `model_forms`
-        A dict with model names as keys, mapped to WTForm Form objects
-        that should be used as forms for creating and editing
-        instances of these models.
+    By default, a form for adding and editing data will be
+    automatically generated for each SQLAlchemy model. You can also
+    create custom forms if you need more control over what the forms
+    look like or how they behave. To use custom forms, set the
+    `model_forms` parameter to be a dict with model names as keys
+    matched to custom forms for the forms you want to override. Forms
+    should be WTForms form objects; see the `WTForms documentation`_
+    for more information on how to configure forms.
 
-    `exclude_pks`
-        A Boolean value that specifies whether or not to automatically
-        exclude fields representing the primary key from Flask-Admin
-        rendered forms. The default is True.
+    Finally, the `exclude_pks` parameter can be used to specify
+    whether or not to automatically exclude fields representing the
+    primary key in auto-generated forms. The default is True, so the
+    generated forms will not expose the primary keys of your
+    models. This is usually a good idea if you are using a primary key
+    that doesn't have any meaning outside of the database, like an
+    auto-incrementing integer, because changing a primary key changes
+    the nature of foreign key relationships. If you want to expose the
+    primary key, set this to False.
+
+    .. _SQLAlchemy in Flask: http://flask.pocoo.org/docs/patterns/sqlalchemy/
+    .. _WTForms documentation: http://wtforms.simplecodes.com/
     """
     def __init__(self, models, db_session, model_forms=None, exclude_pks=True):
         self.model_classes = {}
