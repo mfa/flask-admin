@@ -216,7 +216,7 @@ def _get_pk_value(model_instance):
     """
     values = []
     for value in _get_pk_name(model_instance):
-        values.append(str(getattr(model_instance, value)))
+        values.append(unicode(getattr(model_instance, value)))
 
     return "|".join(values)
 
@@ -293,20 +293,19 @@ class AdminConverter(ModelConverter):
                              column=column, field_args=kwargs)
 
         if isinstance(prop, sa.orm.properties.RelationshipProperty):
-
             if str(prop).endswith('_query'):
                 # only applyable if two relationships set 
                 # (one with dynamic and one with select)
                 return
 
-            # if prop.direction == sa.orm.interfaces.MANYTOONE and \
-            #        len(prop.local_remote_pairs) != 1:
-            #     raise TypeError('Do not know how to convert multiple'
-            #                     '-column properties currently')
-            # elif prop.direction == sa.orm.interfaces.MANYTOMANY and \
-            #          len(prop.local_remote_pairs) != 2:
-            #     raise TypeError('Do not know how to convert multiple'
-            #                     '-column properties currently')
+#            if prop.direction == sa.orm.interfaces.MANYTOONE and \
+#                   len(prop.local_remote_pairs) != 1:
+#                raise TypeError('Do not know how to convert multiple'
+#                                '-column properties currently')
+#            elif prop.direction == sa.orm.interfaces.MANYTOMANY and \
+#                     len(prop.local_remote_pairs) != 2:
+#                raise TypeError('Do not know how to convert multiple'
+#                                '-column properties currently')
 
             local_column = prop.local_remote_pairs[0][0]
             foreign_model = prop.mapper.class_
