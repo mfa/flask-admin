@@ -122,9 +122,9 @@ class SQLAlchemyDatastore(AdminDatastore):
         model_class = self.get_model_class(model_name)
         pk_query_dict = {}
 
-        for key, value in zip(_get_pk_name(model_class), model_key.split('|')):
+        for key, value in zip(_get_pk_names(model_class), model_key):
             pk_query_dict[key] = value
-            
+
         try:
             return self.db_session.query(model_class).filter_by(
                 **pk_query_dict).one()
@@ -141,7 +141,10 @@ class SQLAlchemyDatastore(AdminDatastore):
 
     def get_model_key(self, model_instance):
         """Returns the primary key for a given a model instance."""
-        return _get_pk_value(model_instance)
+        values = []
+        for value in _get_pk_names(model_instance):
+            values.append(unicode(getattr(model_instance, value)))
+        return "/".join(values)
 
     def list_model_names(self):
         """Returns a list of model names available in the datastore."""
@@ -175,7 +178,7 @@ def _form_for_model(model_class, db_session, exclude=None, exclude_pk=True):
     model_mapper = sa.orm.class_mapper(model_class)
     relationship_fields = []
 
-    pk_names = _get_pk_name(model_class)
+    pk_names = _get_pk_names(model_class)
 
     if exclude_pk:
         exclude.extend(pk_names)
@@ -194,31 +197,15 @@ def _form_for_model(model_class, db_session, exclude=None, exclude_pk=True):
     return form
 
 
-def _get_pk_name(model):
-    """Return the primary key attribute name for a given model (either
-    instance or class). Assumes single primary key.
+def _get_pk_names(model):
+    """Return the primary key attribute names for a given model
+    (either instance or class).
     """
     model_mapper = model.__mapper__
 
-    keys = []
-
-    for prop in model_mapper.iterate_properties:
-        if isinstance(prop, sa.orm.properties.ColumnProperty) and \
-               prop.columns[0].primary_key:
-            keys.append(prop.key)
-
-    return keys
-
-
-def _get_pk_value(model_instance):
-    """Return the primary key value for a given model
-    instance. Assumes single primary key.
-    """
-    values = []
-    for value in _get_pk_name(model_instance):
-        values.append(unicode(getattr(model_instance, value)))
-
-    return "|".join(values)
+    return [prop.key for prop in model_mapper.iterate_properties
+            if isinstance(prop, sa.orm.properties.ColumnProperty) and \
+                prop.columns[0].primary_key]
 
 
 def _query_factory_for(model_class, db_session):
