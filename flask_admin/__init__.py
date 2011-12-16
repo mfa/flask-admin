@@ -64,6 +64,13 @@ def create_admin_blueprint(*args, **kwargs):
 
     The `list_view_pagination` parameter sets the number of items that
     will be listed per page in the list view.
+
+    Finally, the `empty_sequence` keyword can be used to designate a
+    sequence of characters that can be used as a substitute for cases
+    where part of the key url may be empty.  This should be a rare
+    occurance, but might comes up when using composite keys which can
+    contain empty parts. By default, `empty_sequence` is set to %1A,
+    the substitute control character.
     """
     if not isinstance(args[0], AdminDatastore):
         from warnings import warn
@@ -94,7 +101,7 @@ def create_admin_blueprint_deprecated(
 
 def create_admin_blueprint_new(
     datastore, name='admin', list_view_pagination=25, view_decorator=None,
-    **kwargs):
+    empty_sequence=u'\x1a', **kwargs):
 
     admin_blueprint = flask.Blueprint(
         name, 'flask.ext.admin',
@@ -110,6 +117,14 @@ def create_admin_blueprint_new(
             def wrapper(*args, **kwds):
                 return f(*args, **kwds)
             return wrapper
+
+    def get_model_url_key(model_instance):
+        """Helper function that turns a set of model keys into a
+        unique key for a url.
+        """
+        values = datastore.get_model_keys(model_instance)
+        return '/'.join([unicode(value) if value else empty_sequence
+                         for value in values])
 
     def create_index_view():
         @view_decorator
@@ -134,30 +149,29 @@ def create_admin_blueprint_new(
             page = int(request.args.get('page', '1'))
             pagination = datastore.create_model_pagination(
                 model_name, page, per_page)
+
             return render_template(
                 'admin/list.html',
                 model_names=datastore.list_model_names(),
-                get_model_key=datastore.get_model_key,
+                get_model_url_key=get_model_url_key,
                 model_name=model_name,
                 pagination=pagination)
         return list_view
 
     def create_edit_view():
         @view_decorator
-        def edit(model_name, model_key):
+        def edit(model_name, model_url_key):
             """Edit a particular instance of a model."""
-            if '/' in model_key:
-                model_key = model_key.split('/')
-            else:
-                model_key = [model_key]
+            model_keys = [key if key != empty_sequence else u''
+                         for key in model_url_key.split('/')]
 
             if not model_name in datastore.list_model_names():
                 return "%s cannot be accessed through this admin page" % (
                     model_name,)
 
             model_form = datastore.get_model_form(model_name)
-            model_instance = datastore.find_model_instance(model_name,
-                                                           model_key)
+            model_instance = datastore.find_model_instance(
+                model_name, model_keys)
 
             if not model_instance:
                 return "%s not found: %s" % (model_name, model_key)
@@ -181,7 +195,7 @@ def create_admin_blueprint_new(
                     flash('%s updated: %s' % (model_name, model_instance),
                           'success')
                     return redirect(
-                        url_for('.list_view',
+                        url_for('.list',
                                 model_name=model_name))
                 else:
                     flash('There was an error processing your form. '
@@ -221,7 +235,7 @@ def create_admin_blueprint_new(
                     datastore.save_model(model_instance)
                     flash('%s added: %s' % (model_name, model_instance),
                           'success')
-                    return redirect(url_for('.list_view',
+                    return redirect(url_for('.list',
                                             model_name=model_name))
                 else:
                     flash('There was an error processing your form. This '
@@ -235,38 +249,36 @@ def create_admin_blueprint_new(
 
     def create_delete_view():
         @view_decorator
-        def delete(model_name, model_key):
+        def delete(model_name, model_url_key):
             """Delete an instance of a model."""
-            if '/' in model_key:
-                model_key = model_key.split('/')
-            else:
-                model_key = [model_key]
+            model_keys = [key if key != empty_sequence else u''
+                          for key in model_url_key.split('/')]
 
             if not model_name in datastore.list_model_names():
                 return "%s cannot be accessed through this admin page" % (
                     model_name,)
             model_instance = datastore.delete_model_instance(model_name,
-                                                             model_key)
+                                                             model_keys)
             if not model_instance:
-                return "%s not found: %s" % (model_name, model_key)
+                return "%s not found: %s" % (model_name, model_keys)
 
             flash('%s deleted: %s' % (model_name, model_instance),
                   'success')
             return redirect(url_for(
-                '.list_view',
+                '.list',
                 model_name=model_name))
         return delete
 
     admin_blueprint.add_url_rule('/', 'index',
                       view_func=create_index_view())
     admin_blueprint.add_url_rule('/list/<model_name>/',
-                      'list_view',
+                      'list',
                       view_func=create_list_view())
-    admin_blueprint.add_url_rule('/edit/<model_name>/<path:model_key>/',
+    admin_blueprint.add_url_rule('/edit/<model_name>/<path:model_url_key>/',
                       'edit',
                       view_func=create_edit_view(),
                       methods=['GET', 'POST'])
-    admin_blueprint.add_url_rule('/delete/<model_name>/<path:model_key>/',
+    admin_blueprint.add_url_rule('/delete/<model_name>/<path:model_url_key>/',
                       'delete',
                       view_func=create_delete_view())
     admin_blueprint.add_url_rule('/add/<model_name>/',

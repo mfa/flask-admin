@@ -1,3 +1,4 @@
+from datetime import datetime
 import sys
 import unittest
 
@@ -16,6 +17,7 @@ from example.authentication import view_decorator
 from example.flask_sqlalchemy import flaskext_sa_simple
 from example.flask_sqlalchemy import flaskext_sa_example
 from example.flask_sqlalchemy import flaskext_sa_multi_pk
+from example.mongoalchemy import simple as ma_simple
 import test.deprecation
 import test.filefield
 from test.mongoalchemy_datastore import ConversionTest
@@ -238,7 +240,7 @@ class FlaskSQLAlchemyMultiPKsTest(TestCase):
         self.assert_200(rv)
 
     def test_view_location(self):
-        rv = self.client.get('/admin/edit/Location/K2|2.01|left side/')
+        rv = self.client.get('/admin/edit/Location/K2/2.01/left%20side/')
         self.assert_200(rv)
 
     def test_add_location(self):
@@ -251,15 +253,17 @@ class FlaskSQLAlchemyMultiPKsTest(TestCase):
                                         position=u''))
         self.assertEqual(self.app.db_session.query(
                 flaskext_sa_multi_pk.Location).count(), 2)
-        rv = self.client.get('/admin/edit/Location/K2|2.03|/')
-        self.assert_200(rv)
+        rv = self.client.get('/admin/edit/Location/K2/2.03/%1A/')
+        assert 'edit_form' in rv.data
 
     def test_edit_location(self):
-        rv = self.client.post('/admin/edit/Location/K2|2.01|left side/',
-                              data=dict(position='right side'))
-        rv = self.client.get('/admin/edit/Location/K2|2.01|right side/')
+        rv = self.client.post('/admin/edit/Location/K2/2.01/left%20side/',
+                              data=dict(address=u'K2',
+                                        address_shortname=u'K2',
+                                        room=u'2.01',
+                                        position='right side'))
+        rv = self.client.get('/admin/edit/Location/K2/2.01/right%20side/')
         self.assert_200(rv)
-
 
 
 class ExcludePKsTrueTest(TestCase):
@@ -370,6 +374,70 @@ class DeprecationTest(TestCase):
         self.assert_200(rv)
 
 
+class MASimpleTest(TestCase):
+    TESTING = True
+
+    def create_app(self):
+        app = ma_simple.create_app('masimple-test')
+        # clear db of test objects first
+        app.db_session.remove_query(ma_simple.Course).execute()
+        app.db_session.remove_query(ma_simple.Teacher).execute()
+        app.db_session.remove_query(ma_simple.Student).execute()
+        app.db_session.insert(ma_simple.Course(
+                subject="Maths",
+                start_date=datetime(2011, 8, 12),
+                end_date=datetime(2011,12,16)))
+        app.db_session.insert(ma_simple.Student(name="Stewart"))
+        app.db_session.insert(ma_simple.Student(name="Mike"))
+        app.db_session.insert(ma_simple.Student(name="Jason"))
+        return app
+
+    def test_basic(self):
+        rv = self.client.get('/')
+        self.assert_redirects(rv, '/admin')
+
+    def test_index(self):
+        rv = self.client.get('/admin/')
+        self.assert_200(rv)
+
+    def test_list(self):
+        rv = self.client.get('/admin/list/Student/?page=1')
+        self.assert_200(rv)
+
+    def test_edit(self):
+        course = self.app.db_session.query(ma_simple.Course).\
+            filter(ma_simple.Course.subject == 'Maths').one()
+        course_dict = dict([(key, str(getattr(course, key)))
+                             for key in course.get_fields()])
+        course_dict['end_date'] = "2012-05-31 00:00:00"
+        rv = self.client.post('/admin/edit/Course/%s/' % course.mongo_id,
+                              data=course_dict)
+        new_course = self.app.db_session.query(ma_simple.Course).\
+            filter(ma_simple.Course.subject == 'Maths').one()
+
+        self.assertEqual(new_course.end_date, datetime(2012, 5, 31))
+        self.assert_redirects(rv, '/admin/list/Course/')
+
+    def test_add(self):
+        self.assertEqual(self.app.db_session.query(ma_simple.Teacher).count(), 0)
+        rv = self.client.post('/admin/add/Teacher/',
+                              data=dict(name='Mr. Kohleffel'))
+        self.assertEqual(self.app.db_session.query(ma_simple.Teacher).count(), 1)
+        self.assert_redirects(rv, '/admin/list/Teacher/')
+
+    def test_delete(self):
+        student_query = self.app.db_session.query(ma_simple.Student)
+        self.assertEqual(student_query.count(), 3)
+        student = student_query.first()
+        rv = self.client.get('/admin/delete/Student/%s/' % student.mongo_id)
+        self.assertEqual(student_query.count(), 2)
+        self.assert_redirects(rv, '/admin/list/Student/')
+
+        rv = self.client.get('/admin/delete/Student/%s/' % student.mongo_id)
+        self.assert_200(rv)
+        assert "Student not found" in rv.data
+
+
 def suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(SimpleTest))
@@ -386,8 +454,8 @@ def suite():
     suite.addTest(unittest.makeSuite(FileFieldTest))
     suite.addTest(unittest.makeSuite(DeprecationTest))
     suite.addTest(unittest.makeSuite(ConversionTest))
+    suite.addTest(unittest.makeSuite(MASimpleTest))
     return suite
-
 
 if __name__ == '__main__':
     test_suite = suite()
