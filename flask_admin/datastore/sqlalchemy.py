@@ -103,24 +103,27 @@ class SQLAlchemyDatastore(AdminDatastore):
         return Pagination(model_instances, page, per_page,
                           model_instances.count(), items)
 
-    def delete_model_instance(self, model_name, model_key):
+    def delete_model_instance(self, model_name, model_keys):
         """Deletes a model instance. Returns True if model instance
         was successfully deleted, returns False otherwise.
         """
-        model_instance = self.find_model_instance(model_name, model_key)
+        model_instance = self.find_model_instance(model_name, model_keys)
         if not model_instance:
             return False
         self.db_session.delete(model_instance)
         self.db_session.commit()
         return True
 
-    def find_model_instance(self, model_name, model_key):
+    def find_model_instance(self, model_name, model_keys):
         """Returns a model instance, if one exists, that matches
-        model_name and model_key. Returns None if no such model
+        model_name and model_keys. Returns None if no such model
         instance exists.
         """
         model_class = self.get_model_class(model_name)
         pk_query_dict = {}
+
+        for key, value in zip(_get_pk_names(model_class), model_keys):
+            pk_query_dict[key] = value
 
         for key, value in zip(_get_pk_name(model_class), model_key.split('|')):
             pk_query_dict[key] = value
@@ -139,9 +142,10 @@ class SQLAlchemyDatastore(AdminDatastore):
         """Returns a form, given a model name."""
         return self.form_dict[model_name]
 
-    def get_model_key(self, model_instance):
-        """Returns the primary key for a given a model instance."""
-        return _get_pk_value(model_instance)
+    def get_model_keys(self, model_instance):
+        """Returns the keys for a given a model instance."""
+        return [getattr(model_instance, value)
+                for value in _get_pk_names(model_instance)]
 
     def list_model_names(self):
         """Returns a list of model names available in the datastore."""
@@ -175,7 +179,7 @@ def _form_for_model(model_class, db_session, exclude=None, exclude_pk=True):
     model_mapper = sa.orm.class_mapper(model_class)
     relationship_fields = []
 
-    pk_names = _get_pk_name(model_class)
+    pk_names = _get_pk_names(model_class)
 
     if exclude_pk:
         exclude.extend(pk_names)
@@ -194,31 +198,15 @@ def _form_for_model(model_class, db_session, exclude=None, exclude_pk=True):
     return form
 
 
-def _get_pk_name(model):
-    """Return the primary key attribute name for a given model (either
-    instance or class). Assumes single primary key.
+def _get_pk_names(model):
+    """Return the primary key attribute names for a given model
+    (either instance or class).
     """
     model_mapper = model.__mapper__
 
-    keys = []
-
-    for prop in model_mapper.iterate_properties:
-        if isinstance(prop, sa.orm.properties.ColumnProperty) and \
-               prop.columns[0].primary_key:
-            keys.append(prop.key)
-
-    return keys
-
-
-def _get_pk_value(model_instance):
-    """Return the primary key value for a given model
-    instance. Assumes single primary key.
-    """
-    values = []
-    for value in _get_pk_name(model_instance):
-        values.append(str(getattr(model_instance, value)))
-
-    return "|".join(values)
+    return [prop.key for prop in model_mapper.iterate_properties
+            if isinstance(prop, sa.orm.properties.ColumnProperty) and \
+                prop.columns[0].primary_key]
 
 
 def _query_factory_for(model_class, db_session):
@@ -293,14 +281,14 @@ class AdminConverter(ModelConverter):
                              column=column, field_args=kwargs)
 
         if isinstance(prop, sa.orm.properties.RelationshipProperty):
-            if prop.direction == sa.orm.interfaces.MANYTOONE and \
-                   len(prop.local_remote_pairs) != 1:
-                raise TypeError('Do not know how to convert multiple'
-                                '-column properties currently')
-            elif prop.direction == sa.orm.interfaces.MANYTOMANY and \
-                     len(prop.local_remote_pairs) != 2:
-                raise TypeError('Do not know how to convert multiple'
-                                '-column properties currently')
+#            if prop.direction == sa.orm.interfaces.MANYTOONE and \
+#                   len(prop.local_remote_pairs) != 1:
+#                raise TypeError('Do not know how to convert multiple'
+#                                '-column properties currently')
+#            elif prop.direction == sa.orm.interfaces.MANYTOMANY and \
+#                     len(prop.local_remote_pairs) != 2:
+#                raise TypeError('Do not know how to convert multiple'
+#                                '-column properties currently')
 
             local_column = prop.local_remote_pairs[0][0]
             foreign_model = prop.mapper.class_

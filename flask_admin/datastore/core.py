@@ -8,15 +8,15 @@ class AdminDatastore(object):
         """Returns a pagination object for the list view."""
         raise NotImplementedError()
 
-    def delete_model_instance(self, model_name, model_key):
+    def delete_model_instance(self, model_name, model_keys):
         """Deletes a model instance. Returns True if model instance
         was successfully deleted, returns False otherwise.
         """
         raise NotImplementedError()
 
-    def find_model_instance(self, model_name, model_key):
+    def find_model_instance(self, model_name, model_keys):
         """Returns a model instance, if one exists, that matches
-        model_name and model_key. Returns None if no such model
+        model_name and model_keys. Returns None if no such model
         instance exists.
         """
         raise NotImplementedError()
@@ -29,8 +29,10 @@ class AdminDatastore(object):
         """Returns a form, given a model name."""
         raise NotImplementedError()
 
-    def get_model_key(self, model_instance):
-        """Returns the primary key for a given a model instance."""
+    def get_model_keys(self, model_instance):
+        """Returns the keys for a given a model instance. This should
+        be an iterable (e.g. list or tuple) containing the keys.
+        """
         raise NotImplementedError()
 
     def list_model_names(self):

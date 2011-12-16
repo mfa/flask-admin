@@ -11,7 +11,6 @@ from __future__ import absolute_import
 
 import types
 
-from bson.errors import InvalidId
 import mongoalchemy as ma
 from mongoalchemy.document import Document
 from wtforms import fields as f
@@ -85,23 +84,24 @@ class MongoAlchemyDatastore(AdminDatastore):
             (page - 1) * per_page).limit(per_page)
         return MongoAlchemyPagination(page, per_page, query)
 
-    def delete_model_instance(self, model_name, model_key):
+    def delete_model_instance(self, model_name, model_keys):
         """Deletes a model instance. Returns True if model instance
         was successfully deleted, returns False otherwise.
         """
         model_class = self.get_model_class(model_name)
         try:
-            last_error = self.db_session.remove_query(model_class).filter(
-                model_class.mongo_id == model_key).set_safe(True).execute()
+            model_instance = self.find_model_instance(model_name, model_keys)
+            self.db_session.remove(model_instance)
             return True
-        except InvalidId:
+        except ma.query.BadResultException:
             return False
 
-    def find_model_instance(self, model_name, model_key):
+    def find_model_instance(self, model_name, model_keys):
         """Returns a model instance, if one exists, that matches
-        model_name and model_key. Returns None if no such model
+        model_name and model_keys. Returns None if no such model
         instance exists.
         """
+        model_key = model_keys[0]
         model_class = self.get_model_class(model_name)
         return self.db_session.query(model_class).filter(
             model_class.mongo_id == model_key).one()
@@ -114,9 +114,9 @@ class MongoAlchemyDatastore(AdminDatastore):
         """Returns a form, given a model name."""
         return self.form_dict.get(model_name, None)
 
-    def get_model_key(self, model_instance):
-        """Returns the primary key for a given a model instance."""
-        return model_instance.mongo_id
+    def get_model_keys(self, model_instance):
+        """Returns the keys for a given a model instance."""
+        return [model_instance.mongo_id]
 
     def list_model_names(self):
         """Returns a list of model names available in the datastore."""
