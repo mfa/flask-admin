@@ -125,9 +125,6 @@ class SQLAlchemyDatastore(AdminDatastore):
         for key, value in zip(_get_pk_names(model_class), model_keys):
             pk_query_dict[key] = value
 
-        for key, value in zip(_get_pk_name(model_class), model_key.split('|')):
-            pk_query_dict[key] = value
-            
         try:
             return self.db_session.query(model_class).filter_by(
                 **pk_query_dict).one()
